@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+
+try:
+    import sys
+    import argparse
+    from kubernetes import client, config
+except ImportError as error:
+    print ("Plugin global import error: {0}".format(error))
+    sys.exit(10)
+
+class SHELL:
+    def __init__(self, args):
+        self.args = args
+        config.load_kube_config()
+        self.v1 = client.CoreV1Api()
+    def kube_status(self):
+        ret = {}
+        res = self.v1.list_pod_for_all_namespaces(watch=False)
+        for i in res.items:
+            for j in i.spec.containers:
+                ret[j.name] = {'ip': i.status.pod_ip,
+                               'ns':i.metadata.namespace,
+                               'resources':j.resources}
+        return ret
+    def getRequestsAndLimits(self, container_name):
+        k_status = self.kube_status()
+        if container_name not in k_status.keys():
+            return (None, None)
+        return k_status[container_name]['resources']
+
+    def run(self):
+        k_status = self.kube_status()
+        if self.args.c not in k_status.keys():
+            print ("Container %s not found"%self.args.c)
+        if k_status[self.args.c]["ns"] != self.args.n:
+            print ("Container %s not found in namespace %s"%
+                   (self.args.c, self.args.n))
+        limits = self.getRequestsAndLimits(self.args.c)
+        print (limits)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Increase resources allocation for the containers')
+    parser.add_argument('--set-cpu',
+                        required=True,
+                        help='Set CPU limits')
+    parser.add_argument('--set-memory',
+                        required=True,
+                        help='Set Memory limits')
+    parser.add_argument('-n',
+                        required=True,
+                        help='Set namespace/pod')
+    parser.add_argument('-c',
+                        required=True,
+                        help='Set container name')
+
+    args = parser.parse_args()
+    shell = SHELL(args)
+    shell.run()
+
+
+main()
