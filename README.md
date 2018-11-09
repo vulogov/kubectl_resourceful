@@ -18,3 +18,9 @@ kubectl resourceful --set-cpu=200m --set-memory=256Mi -n kube-system -c coredns
 #### Actual installation
 
 Place _kubectl-resourceful_ somewhere in the PATH, for example, _/usr/local/bin_
+
+### TODO
+
+1. Do the unit conversion for the CPU and memory and conpare user sets with
+the current limits
+2. Do the actual code of the resource adjustment
