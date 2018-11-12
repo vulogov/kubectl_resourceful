@@ -2,6 +2,7 @@
 
 try:
     import sys
+    import re
     import argparse
     from kubernetes import client, config
 except ImportError as error:
@@ -13,30 +14,69 @@ class SHELL:
         self.args = args
         config.load_kube_config()
         self.v1 = client.CoreV1Api()
+        self._key = "%s:%s"%(self.args.n, self.args.c)
+    def convertNumber(self, _n):
+        _n = _n.lower()
+        n = re.compile(r'(\d+(?:\.\d+)?)\s*([MK]?[bi])', re.IGNORECASE)
+        order = ['b', 'kb', 'mb', 'gb', 'tb']
+        order2 = ['b', 'ki', 'mi', 'gi', 'ti']
+        try:
+            for value, unit in n.findall(_n):
+                if unit in order:
+                    return (int(float(value) * (1024**order.index(unit.lower()))))
+                elif unit in order2:
+                    return (int(float(value) * (1024**order2.index(unit.lower()))))
+        except:
+            pass
+        return 0
     def kube_status(self):
         ret = {}
         res = self.v1.list_pod_for_all_namespaces(watch=False)
         for i in res.items:
             for j in i.spec.containers:
-                ret[j.name] = {'ip': i.status.pod_ip,
+                _key = "%s:%s"%(i.metadata.namespace, j.name)
+                ret[_key] = {'ip': i.status.pod_ip,
                                'ns':i.metadata.namespace,
                                'resources':j.resources}
         return ret
     def getRequestsAndLimits(self, container_name):
         k_status = self.kube_status()
-        if container_name not in k_status.keys():
-            return (None, None)
-        return k_status[container_name]['resources']
+        _key = "%s:%s"%(self.args.n, container_name)
+        if _key not in k_status.keys():
+            return {'limits':None, 'requests':None}
+        return k_status[_key]['resources']
+    def checkRequestsAndLimits(self, container_name):
+        limits = self.getRequestsAndLimits(container_name)
+        try:
+            limits = limits.to_dict()
+        except:
+            pass
+        mem_lim = 0
+        cpu_lim = 0
+        if limits['limits'] == None:
+            pass
+        elif 'memory' in limits['limits'].keys():
+            mem_lim = self.convertNumber(limits['limits']['memory'])
+        elif 'cpu' in limits['limits'].keys():
+            cpu_lim = self.convertNumber(limits['limits']['cpu'])
+        if cpu_lim != 0 and self.convertNumber(self.args.set_cpu) <= cpu_lim:
+            print ("You can not decrease CPU limit")
+            return (False, mem_lim, cpu_lim)
+        elif mem_lim != 0 and self.convertNumber(self.args.set_memory) <= mem_lim:
+            print ("You can not decrease memory limit")
+            return (False, mem_lim, cpu_lim)
+        else:
+            pass
+        return (True, mem_lim, cpu_lim)
 
     def run(self):
         k_status = self.kube_status()
-        if self.args.c not in k_status.keys():
-            print ("Container %s not found"%self.args.c)
-        if k_status[self.args.c]["ns"] != self.args.n:
+        if self._key not in k_status.keys():
             print ("Container %s not found in namespace %s"%
                    (self.args.c, self.args.n))
-        limits = self.getRequestsAndLimits(self.args.c)
-        print (limits)
+            return 0
+        limitsStatus, memory_limit, cpu_limit = self.checkRequestsAndLimits(self.args.c)
+
 
 def main():
     parser = argparse.ArgumentParser(
