@@ -5,6 +5,7 @@ try:
     import re
     import argparse
     from kubernetes import client, config
+    import kubernetes
 except ImportError as error:
     print ("Plugin global import error: {0}".format(error))
     sys.exit(10)
@@ -76,6 +77,14 @@ class SHELL:
                    (self.args.c, self.args.n))
             return 0
         limitsStatus, memory_limit, cpu_limit = self.checkRequestsAndLimits(self.args.c)
+        resource_quota = kubernetes.client.V1ResourceQuota(
+            spec=kubernetes.client.V1ResourceQuotaSpec(
+                hard={"limits.cpu": self.args.set_cpu,
+                    "limits.memory": self.args.set_memory,}))
+        resource_quota.metadata = kubernetes.client.V1ObjectMeta(
+            namespace=self.args.n,
+            name="user-quota")
+        self.v1.create_namespaced_resource_quota(self.args.n, resource_quota)
 
 
 def main():
